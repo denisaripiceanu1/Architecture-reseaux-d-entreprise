@@ -87,10 +87,18 @@ ensure_docker_daemon_running() {
 
   warn "Docker échoue encore après redémarrage. Tentative de remise à zéro de /var/lib/docker..."
   $SUDO systemctl stop docker || true
+  $SUDO systemctl reset-failed docker || true
   if [ -d /var/lib/docker ]; then
-    $SUDO mv /var/lib/docker /var/lib/docker.bak
-    warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak"
+    if [ -e /var/lib/docker.bak ]; then
+      BACKUP_SUFFIX="$(date +%Y%m%d%H%M%S)"
+      $SUDO mv /var/lib/docker "/var/lib/docker.bak.${BACKUP_SUFFIX}"
+      warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak.${BACKUP_SUFFIX}"
+    else
+      $SUDO mv /var/lib/docker /var/lib/docker.bak
+      warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak"
+    fi
   fi
+  $SUDO systemctl daemon-reload || true
   $SUDO systemctl start docker
 
   if docker info &>/dev/null; then
