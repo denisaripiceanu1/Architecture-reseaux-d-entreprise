@@ -70,17 +70,22 @@ else
   info "Installation de Docker Engine..."
   $SUDO apt-get install -y -qq ca-certificates curl gnupg lsb-release
 
-  $SUDO install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+  install_docker_official_repo() {
+    $SUDO install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+      $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
 
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-    $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+      $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+  }
+
+  $SUDO install -m 0755 -d /etc/apt/keyrings
+  install_docker_official_repo
 
   $SUDO apt-get update -qq
-  $SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  $SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin
 
   # Ajouter l'utilisateur courant au groupe docker
   if [ -n "${SUDO_USER:-}" ]; then
@@ -100,9 +105,14 @@ if docker compose version &>/dev/null; then
   COMPOSE_VERSION=$(docker compose version --short)
   ok "Docker Compose déjà disponible (v$COMPOSE_VERSION)"
 else
-  info "Installation du plugin Docker Compose..."
+  info "Installation du plugin Docker Compose depuis le dépôt officiel Docker..."
   $SUDO apt-get install -y -qq docker-compose-plugin
-  ok "Docker Compose installé"
+  if docker compose version &>/dev/null; then
+    COMPOSE_VERSION=$(docker compose version --short)
+    ok "Docker Compose installé (v$COMPOSE_VERSION)"
+  else
+    fail "Le paquet docker-compose-plugin n'est pas disponible dans le dépôt Docker configuré. Vérifie le fichier /etc/apt/sources.list.d/docker.list et exécute apt-get update."
+  fi
 fi
 
 # -------------------------------------------------------------------
