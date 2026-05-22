@@ -72,6 +72,34 @@ https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
     $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
 }
 
+ensure_docker_daemon_running() {
+  if docker info &>/dev/null; then
+    return 0
+  fi
+
+  info "Le démon Docker ne répond pas, tentative de redémarrage..."
+  $SUDO systemctl restart docker || true
+
+  if docker info &>/dev/null; then
+    ok "Docker est maintenant opérationnel"
+    return 0
+  fi
+
+  warn "Docker échoue encore après redémarrage. Tentative de remise à zéro de /var/lib/docker..."
+  $SUDO systemctl stop docker || true
+  if [ -d /var/lib/docker ]; then
+    $SUDO mv /var/lib/docker /var/lib/docker.bak
+    warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak"
+  fi
+  $SUDO systemctl start docker
+
+  if docker info &>/dev/null; then
+    ok "Docker est opérationnel après remise à zéro du répertoire de données"
+  else
+    fail "Docker ne démarre toujours pas. Vérifie 'journalctl -u docker -xe' et le contenu de /etc/docker/daemon.json."
+  fi
+}
+
 # -------------------------------------------------------------------
 # Docker
 # -------------------------------------------------------------------
@@ -87,6 +115,8 @@ else
 
   $SUDO apt-get update -qq
   $SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  ensure_docker_daemon_running
 
   # Ajouter l'utilisateur courant au groupe docker
   if [ -n "${SUDO_USER:-}" ]; then
