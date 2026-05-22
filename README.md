@@ -126,6 +126,30 @@ apt install wireguard-tools     # Debian/Ubuntu
 brew install wireguard-tools    # macOS
 ```
 
+### Dépannage Ubuntu 22 (erreurs whiteout/overlay)
+
+Si `docker compose build` échoue avec une erreur du type `failed to convert whiteout file ... operation not supported`, le problème vient généralement du backend de stockage Docker (`overlay2`) sur l'hôte Ubuntu, pas des Dockerfile.
+
+Procédure recommandée pour le projet :
+
+```bash
+# Le script applique vfs par défaut (plus lent, mais robuste)
+./install-deps-linux.sh
+
+# Vérifier le driver actif
+docker info | grep -E "Storage Driver|Docker Root Dir"
+
+# Nettoyer le cache build et relancer un build propre
+docker builder prune -af
+DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose build --no-cache
+```
+
+Pour revenir au mode standard ensuite :
+
+```bash
+DOCKER_STORAGE_DRIVER=overlay2 ./install-deps-linux.sh
+```
+
 ### Étape 1 — Démarrer Vault et bootstrapper tous les secrets
 
 > Modifier les mots de passe par défaut dans `vault-init.sh` avant de l'exécuter.

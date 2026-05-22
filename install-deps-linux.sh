@@ -17,10 +17,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Optionnel (désactivé par défaut) :
-#   DOCKER_STORAGE_DRIVER=vfs ./install-deps-linux.sh
-# Permet de contourner certains problèmes overlay/whiteout sur certains hôtes.
-DOCKER_STORAGE_DRIVER="${DOCKER_STORAGE_DRIVER:-}"
+# Driver Docker par défaut pour ce projet (fiabilité Ubuntu whiteout/overlay)
+# Pour revenir au comportement standard Linux :
+#   DOCKER_STORAGE_DRIVER=overlay2 ./install-deps-linux.sh
+DOCKER_STORAGE_DRIVER="${DOCKER_STORAGE_DRIVER:-vfs}"
 
 ok()   { echo -e "${GREEN}  ✓ $1${NC}"; }
 info() { echo -e "${BLUE}  → $1${NC}"; }
