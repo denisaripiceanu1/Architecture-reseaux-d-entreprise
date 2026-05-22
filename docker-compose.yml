@@ -39,7 +39,7 @@ services:
   # Autoritaire pour lafassonnade.lan, forwarder vers 8.8.8.8
   # ---------------------------------------------------------------------------
   dns:
-    image: internetsystemsconsortium/bind9:9.18
+    image: ubuntu/bind9:9.18-24.04_edge
     container_name: dns_e3
     hostname: dns.lafassonnade.lan
     networks:
@@ -115,7 +115,10 @@ services:
   # Interface web : phpLDAPadmin sur http://192.168.3.6:8080
   # ---------------------------------------------------------------------------
   openldap:
-    image: osixia/openldap:1.5.0
+    build:
+      context: ./config/openldap
+      dockerfile: Dockerfile
+    image: entreprise3/openldap:1.5.0
     platform: linux/amd64
     container_name: openldap
     hostname: ldap.lafassonnade.lan
@@ -135,9 +138,6 @@ services:
       LDAP_TLS: "false"                 # Désactivé pour le lab (activer en prod)
       LDAP_REPLICATION: "false"
     volumes:
-      - ./config/openldap/bootstrap/ldif/01-structure.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/01-structure.ldif:ro
-      - ./config/openldap/fix/admin/admin-password-change.ldif:/container/service/slapd/assets/config/admin/admin-password-change.ldif:ro
-      - ./config/openldap/fix/replication/replication-disable.ldif:/container/service/slapd/assets/config/replication/replication-disable.ldif:ro
       - openldap_data:/var/lib/ldap
       - openldap_config:/etc/ldap/slapd.d
       - openldap_secrets:/run/secrets        # Mots de passe rendus par le Vault Agent
@@ -396,7 +396,10 @@ services:
   # comme aide de configuration, mais ils ne sont plus consommés par Docker.
   # ---------------------------------------------------------------------------
   vault-init:
-    image: hashicorp/vault:1.20
+    build:
+      context: ./config/vault
+      dockerfile: Dockerfile.vault-init
+    image: entreprise3/vault-init:latest
     container_name: vault-init
     hostname: vault-init.lafassonnade.lan
     networks:
@@ -405,8 +408,6 @@ services:
     environment:
       VAULT_ADDR: "http://vault:8200"     # Joint le serveur Vault par son nom de service
     working_dir: /project
-    entrypoint: []
-    command: ["sh", "-c", "apk add --no-cache bash wireguard-tools python3 && exec bash config/vault/vault-init.sh"]
     volumes:
       - ./config:/project/config                       # policies, templates, script
       - ./vault-credentials:/project/vault-credentials # clés d'unseal + role-id/secret-id (lus + écrits)

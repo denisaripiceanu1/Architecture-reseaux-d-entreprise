@@ -17,6 +17,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Optionnel (désactivé par défaut) :
+#   DOCKER_STORAGE_DRIVER=vfs ./install-deps-linux.sh
+# Permet de contourner certains problèmes overlay/whiteout sur certains hôtes.
+DOCKER_STORAGE_DRIVER="${DOCKER_STORAGE_DRIVER:-}"
+
 ok()   { echo -e "${GREEN}  ✓ $1${NC}"; }
 info() { echo -e "${BLUE}  → $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
@@ -72,6 +77,38 @@ https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
     $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
 }
 
+configure_docker_storage_driver() {
+  if [ -z "$DOCKER_STORAGE_DRIVER" ]; then
+    return 0
+  fi
+
+  case "$DOCKER_STORAGE_DRIVER" in
+    overlay2|vfs)
+      ;;
+    *)
+      fail "DOCKER_STORAGE_DRIVER doit valoir 'overlay2' ou 'vfs' (valeur reçue: $DOCKER_STORAGE_DRIVER)."
+      ;;
+  esac
+
+  info "Configuration Docker storage-driver='$DOCKER_STORAGE_DRIVER' (option explicite)"
+  $SUDO mkdir -p /etc/docker
+
+  if [ -f /etc/docker/daemon.json ]; then
+    BACKUP_SUFFIX="$(date +%Y%m%d%H%M%S)"
+    $SUDO cp /etc/docker/daemon.json "/etc/docker/daemon.json.bak.${BACKUP_SUFFIX}"
+    warn "Sauvegarde de /etc/docker/daemon.json dans /etc/docker/daemon.json.bak.${BACKUP_SUFFIX}"
+  fi
+
+  cat <<EOF | $SUDO tee /etc/docker/daemon.json > /dev/null
+{
+  "storage-driver": "$DOCKER_STORAGE_DRIVER"
+}
+EOF
+
+  $SUDO systemctl daemon-reload || true
+  $SUDO systemctl restart docker || true
+}
+
 ensure_docker_daemon_running() {
   if docker info &>/dev/null; then
     return 0
@@ -85,27 +122,7 @@ ensure_docker_daemon_running() {
     return 0
   fi
 
-  warn "Docker échoue encore après redémarrage. Tentative de remise à zéro de /var/lib/docker..."
-  $SUDO systemctl stop docker || true
-  $SUDO systemctl reset-failed docker || true
-  if [ -d /var/lib/docker ]; then
-    if [ -e /var/lib/docker.bak ]; then
-      BACKUP_SUFFIX="$(date +%Y%m%d%H%M%S)"
-      $SUDO mv /var/lib/docker "/var/lib/docker.bak.${BACKUP_SUFFIX}"
-      warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak.${BACKUP_SUFFIX}"
-    else
-      $SUDO mv /var/lib/docker /var/lib/docker.bak
-      warn "/var/lib/docker a été sauvegardé dans /var/lib/docker.bak"
-    fi
-  fi
-  $SUDO systemctl daemon-reload || true
-  $SUDO systemctl start docker
-
-  if docker info &>/dev/null; then
-    ok "Docker est opérationnel après remise à zéro du répertoire de données"
-  else
-    fail "Docker ne démarre toujours pas. Vérifie 'journalctl -u docker -xe' et le contenu de /etc/docker/daemon.json."
-  fi
+  fail "Docker ne démarre pas après installation. Vérifie 'journalctl -u docker -xe', 'docker info', puis configure si besoin /etc/docker/daemon.json (data-root/storage-driver)."
 }
 
 # -------------------------------------------------------------------
@@ -116,6 +133,8 @@ echo "[2/6] Docker..."
 if command -v docker &>/dev/null; then
   DOCKER_VERSION=$(docker --version | awk '{print $3}' | tr -d ',')
   ok "Docker déjà installé (v$DOCKER_VERSION)"
+  configure_docker_storage_driver
+  ensure_docker_daemon_running
 else
   info "Installation de Docker Engine..."
   $SUDO apt-get install -y -qq ca-certificates curl gnupg lsb-release
@@ -124,6 +143,7 @@ else
   $SUDO apt-get update -qq
   $SUDO apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+  configure_docker_storage_driver
   ensure_docker_daemon_running
 
   # Ajouter l'utilisateur courant au groupe docker
