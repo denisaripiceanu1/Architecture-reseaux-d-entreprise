@@ -39,7 +39,7 @@ services:
   # Autoritaire pour lafassonnade.lan, forwarder vers 8.8.8.8
   # ---------------------------------------------------------------------------
   dns:
-    image: ubuntu/bind9:9.18-24.04_edge
+    image: internetsystemsconsortium/bind9:9.18
     container_name: dns_e3
     hostname: dns.lafassonnade.lan
     networks:
