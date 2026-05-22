@@ -1,0 +1,3 @@
+{{- with secret "secret/data/entreprise3/samba/ad-password" -}}
+DOMAINPASS={{ .Data.data.password }}
+{{- end }}

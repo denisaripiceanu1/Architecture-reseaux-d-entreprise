@@ -1,0 +1,20 @@
+# =============================================================================
+# Dockerfile.vault-init — Image d'initialisation/bootstrap Vault
+# Lance vault-init.sh (idempotent) à chaque démarrage : attend Vault, le
+# descelle avec les clés stockées, garantit policies / approles / secrets.
+# =============================================================================
+FROM hashicorp/vault:1.20
+
+USER root
+
+# Outils requis par vault-init.sh, absents de l'image Vault minimale (Alpine) :
+#   - bash : le script utilise le shebang bash + set -euo pipefail
+#   - wireguard-tools : wg genkey / pubkey / genpsk (1ère génération)
+#   - python3 : parsing JSON de la sortie de `vault status` / init
+RUN apk add --no-cache bash wireguard-tools python3
+
+WORKDIR /project
+
+# Neutralise l'entrypoint "vault" de l'image pour exécuter le script directement
+ENTRYPOINT []
+CMD ["bash", "config/vault/vault-init.sh"]

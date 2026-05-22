@@ -1,0 +1,32 @@
+; =============================================================================
+; Zone directe — lafassonnade.lan
+; =============================================================================
+$TTL 86400
+@   IN  SOA dns.lafassonnade.lan. admin.lafassonnade.lan. (
+            2026052001  ; Serial
+            3600        ; Refresh
+            1800        ; Retry
+            604800      ; Expire
+            86400 )     ; Minimum TTL
+
+; Serveurs de noms
+@       IN  NS  dns.lafassonnade.lan.
+
+; ---- Site Entreprise 3a ----
+dns     IN  A   192.168.3.1
+dhcp    IN  A   192.168.3.2
+voip    IN  A   192.168.3.3
+ldap    IN  A   192.168.3.5
+ldapadmin IN A 192.168.3.6
+vpn     IN  A   192.168.3.10
+vault     IN  A   192.168.3.15
+portainer IN  A   192.168.3.20
+gw      IN  A   192.168.3.254   ; R_ent3a (LAN gateway)
+
+; ---- Site Entreprise 3b ----
+web     IN  A   192.168.3.4
+gw3b    IN  A   192.168.3.253   ; R_ent3b
+
+; Alias pratiques
+smtp    IN  CNAME   ad.lafassonnade.lan.
+www     IN  CNAME   web.lafassonnade.lan.

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Entreprise 3b</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 48px 56px;
+            max-width: 680px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #ebf4ff;
+            color: #2b6cb0;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 4px 14px;
+            border-radius: 99px;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: #718096;
+            margin-bottom: 40px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+
+        .info-item {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px 20px;
+        }
+
+        .info-item .label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #a0aec0;
+            margin-bottom: 4px;
+        }
+
+        .info-item .value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #2d3748;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: #f0fff4;
+            border: 1px solid #c6f6d5;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #276749;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            background: #48bb78;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        footer {
+            margin-top: 32px;
+            font-size: 0.8rem;
+            color: #a0aec0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <span class="badge">Site Entreprise 3b</span>
+        <h1>Serveur Web</h1>
+        <p class="subtitle">Accessible depuis le Site 3a via le tunnel WireGuard sur pfSense</p>
+
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="label">Adresse IP</div>
+                <div class="value">192.168.3.4</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Réseau</div>
+                <div class="value">192.168.3.0/24</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Hostname</div>
+                <div class="value">web.lafassonnade.lan</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Routeur site</div>
+                <div class="value">R_ent3b (.253)</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Tunnel VPN</div>
+                <div class="value">WireGuard</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Site principal</div>
+                <div class="value">R_ent3a (.254)</div>
+            </div>
+        </div>
+
+        <div class="status">
+            <div class="dot"></div>
+            Serveur opérationnel — Connexion inter-sites active
+        </div>
+    </div>
+
+    <footer>
+        Projet Réseau — Entreprise 3a / 3b &nbsp;|&nbsp; lafassonnade.lan
+    </footer>
+</body>
+</html>

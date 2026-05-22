@@ -1,0 +1,22 @@
+dn: dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: lafassonnade
+dc: lafassonnade
+
+# Organizational units
+dn: ou=users,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=services,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: services
