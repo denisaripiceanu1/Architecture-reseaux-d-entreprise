@@ -397,8 +397,8 @@ services:
   # ---------------------------------------------------------------------------
   vault-init:
     build:
-      context: .
-      dockerfile: config/vault/Dockerfile.vault-init
+      context: ./config/vault
+      dockerfile: Dockerfile.vault-init
     image: entreprise3/vault-init:latest
     container_name: vault-init
     hostname: vault-init.lafassonnade.lan
