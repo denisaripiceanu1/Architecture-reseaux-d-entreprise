@@ -11,10 +11,11 @@ USER root
 #   - bash : le script utilise le shebang bash + set -euo pipefail
 #   - wireguard-tools : wg genkey / pubkey / genpsk (1ère génération)
 #   - python3 : parsing JSON de la sortie de `vault status` / init
-RUN apk add --no-cache bash wireguard-tools python3
+# Installation déplacée au runtime pour éviter les erreurs BuildKit/overlay
+# rencontrées pendant `docker compose build` sur certains hôtes Linux.
 
 WORKDIR /project
 
 # Neutralise l'entrypoint "vault" de l'image pour exécuter le script directement
 ENTRYPOINT []
-CMD ["bash", "config/vault/vault-init.sh"]
+CMD ["sh", "-c", "apk add --no-cache bash wireguard-tools python3 && exec bash config/vault/vault-init.sh"]
