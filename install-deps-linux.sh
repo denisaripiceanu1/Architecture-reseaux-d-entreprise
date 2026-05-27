@@ -25,6 +25,11 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VAULT_DATA_DIR="${PROJECT_DIR}/data/vault"
+
+mkdir -p "$VAULT_DATA_DIR"
+$SUDO chown -R "${VAULT_DATA_UID:-100}:${VAULT_DATA_GID:-1000}" "$VAULT_DATA_DIR"
+$SUDO chmod 700 "$VAULT_DATA_DIR"
 
 bold() { printf "\033[1m%s\033[0m\n" "$*"; }
 info() { printf "ℹ️  %s\n" "$*"; }
