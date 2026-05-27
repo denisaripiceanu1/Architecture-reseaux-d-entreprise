@@ -1,0 +1,81 @@
+dn: ou=users,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: users
+description: Comptes utilisateurs du site Entreprise 3
+
+dn: ou=groups,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: groups
+description: Groupes LDAP du site Entreprise 3
+
+dn: ou=services,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: organizationalUnit
+ou: services
+description: Comptes techniques pour les services internes
+
+dn: uid=alice,ou=users,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Martin
+sn: Martin
+givenName: Alice
+displayName: Alice Martin
+mail: alice@lafassonnade.lan
+userPassword: alice123
+
+dn: uid=bob,ou=users,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Durand
+sn: Durand
+givenName: Bob
+displayName: Bob Durand
+mail: bob@lafassonnade.lan
+userPassword: bob123
+
+dn: uid=admin-tp,ou=users,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: inetOrgPerson
+uid: admin-tp
+cn: Admin TP
+sn: TP
+givenName: Admin
+displayName: Admin TP
+mail: admin@lafassonnade.lan
+userPassword: admin123
+
+dn: uid=svc-openvpn,ou=services,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: account
+objectClass: simpleSecurityObject
+uid: svc-openvpn
+description: Compte technique pour les tests d'integration OpenVPN/LDAP
+userPassword: svc-openvpn123
+
+dn: cn=admins,ou=groups,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: groupOfNames
+cn: admins
+description: Administrateurs du TP
+member: uid=admin-tp,ou=users,dc=lafassonnade,dc=lan
+
+dn: cn=vpn-users,ou=groups,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: groupOfNames
+cn: vpn-users
+description: Utilisateurs autorises a tester le VPN
+member: uid=alice,ou=users,dc=lafassonnade,dc=lan
+member: uid=admin-tp,ou=users,dc=lafassonnade,dc=lan
+
+dn: cn=voip-users,ou=groups,dc=lafassonnade,dc=lan
+objectClass: top
+objectClass: groupOfNames
+cn: voip-users
+description: Utilisateurs autorises a tester la voix
+member: uid=alice,ou=users,dc=lafassonnade,dc=lan
+member: uid=bob,ou=users,dc=lafassonnade,dc=lan
