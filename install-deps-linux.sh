@@ -115,6 +115,24 @@ stop_docker_units() {
   $SUDO systemctl unmask docker.service docker.socket containerd.service 2>/dev/null || true
 }
 
+stop_docker_processes() {
+  info "Stopping leftover Docker/containerd processes..."
+
+  if command -v pkill >/dev/null 2>&1; then
+    $SUDO pkill -TERM -x dockerd 2>/dev/null || true
+    $SUDO pkill -TERM -x containerd 2>/dev/null || true
+    $SUDO pkill -TERM -x docker-proxy 2>/dev/null || true
+    $SUDO pkill -TERM -f 'containerd-shim' 2>/dev/null || true
+    sleep 2
+    $SUDO pkill -KILL -x dockerd 2>/dev/null || true
+    $SUDO pkill -KILL -x containerd 2>/dev/null || true
+    $SUDO pkill -KILL -x docker-proxy 2>/dev/null || true
+    $SUDO pkill -KILL -f 'containerd-shim' 2>/dev/null || true
+  else
+    warn "pkill not found; skipping leftover process cleanup"
+  fi
+}
+
 purge_docker_packages() {
   info "Removing Docker packages and common conflicts..."
 
@@ -142,6 +160,28 @@ purge_docker_packages() {
   ok "Previous Docker packages removed"
 }
 
+cleanup_docker_netns() {
+  info "Unmounting leftover Docker network namespaces..."
+
+  if [[ ! -d /run/docker/netns ]]; then
+    return
+  fi
+
+  if command -v findmnt >/dev/null 2>&1; then
+    while IFS= read -r target; do
+      [[ -n "${target}" ]] || continue
+      $SUDO umount -l "${target}" 2>/dev/null || true
+    done < <(findmnt -R /run/docker/netns -n -o TARGET 2>/dev/null | sort -r)
+  fi
+
+  while IFS= read -r ns_path; do
+    [[ -n "${ns_path}" ]] || continue
+    if mountpoint -q "${ns_path}" 2>/dev/null; then
+      $SUDO umount -l "${ns_path}" 2>/dev/null || true
+    fi
+  done < <(find /run/docker/netns -mindepth 1 -maxdepth 1 -print 2>/dev/null || true)
+}
+
 cleanup_docker_runtime() {
   info "Cleaning Docker runtime sockets and state..."
 
@@ -151,15 +191,17 @@ cleanup_docker_runtime() {
     /run/docker.pid \
     /var/run/docker.pid
 
+  cleanup_docker_netns
+
   $SUDO rm -rf \
     /run/docker \
-    /run/containerd
+    /run/containerd || true
 
   if [[ "${KEEP_DOCKER_DATA:-0}" == "1" ]]; then
     info "KEEP_DOCKER_DATA=1: preserving /var/lib/docker and /var/lib/containerd"
   else
     warn "Deleting /var/lib/docker and /var/lib/containerd for a clean reinstall"
-    $SUDO rm -rf /var/lib/docker /var/lib/containerd
+    $SUDO rm -rf /var/lib/docker /var/lib/containerd || true
   fi
 }
 
@@ -191,6 +233,7 @@ install_docker() {
   bold "3/6 Docker Engine and Compose"
 
   stop_docker_units
+  stop_docker_processes
   purge_docker_packages
   cleanup_docker_runtime
   configure_docker_repository
