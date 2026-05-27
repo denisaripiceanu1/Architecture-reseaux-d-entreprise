@@ -289,8 +289,9 @@ services:
         ipv4_address: 192.168.30.3
     volumes:
       - ./config/asterisk/asterisk.conf:/etc/asterisk/asterisk.conf:ro
-      - ./config/asterisk/sip.conf:/etc/asterisk/sip.conf:ro
-      - ./config/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/asterisk-pjsip/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./config/asterisk-pjsip/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/asterisk-pjsip/rtp.conf:/etc/asterisk/rtp.conf:ro
       - asterisk_data:/var/lib/asterisk
       - ./vault-credentials/asterisk:/vault/agent:ro
     ports:
