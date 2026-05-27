@@ -3,21 +3,40 @@ set -Eeuo pipefail
 
 # install-deps-linux-v2.sh
 #
-# Installe les dépendances du projet sur Debian/Ubuntu.
-# Le bloc Docker est volontairement robuste :
-#   - arrêt des unités systemd Docker/containerd
-#   - reset/unmask des unités, y compris docker.socket
-#   - suppression des paquets Docker conflictuels
-#   - purge des paquets Docker officiels déjà présents
-#   - suppression des sockets runtime obsolètes
-#   - réinstallation depuis le dépôt officiel Docker
-#   - réactivation de containerd, docker.socket et docker.service
+# Robust dependency installer for Debian/Ubuntu.
 #
-# Par défaut, les données Docker (/var/lib/docker, /var/lib/containerd) sont
-# supprimées pour repartir d'une installation totalement propre.
-# Pour conserver images, volumes et conteneurs :
+# Docker behavior:
+# - stop docker/containerd systemd units
+# - reset-failed and unmask docker.service, docker.socket, containerd.service
+# - remove conflicting Docker packages
+# - purge official Docker packages before reinstalling
+# - remove stale runtime sockets
+# - remove Docker data by default for a clean lab reinstall
+# - reinstall Docker from the official repository
+# - enable containerd, docker.socket and docker.service
 #
+# By default, Docker data is deleted:
+#   /var/lib/docker
+#   /var/lib/containerd
+#
+# To keep existing Docker images, volumes and containers:
 #   KEEP_DOCKER_DATA=1 ./install-deps-linux-v2.sh
+#
+# Vault local storage is prepared at:
+#   ./data/vault
+#
+# Override Vault storage ownership if needed:
+#   VAULT_DATA_UID=100 VAULT_DATA_GID=1000 ./install-deps-linux-v2.sh
+#
+# The segmented Compose stack is built and started by default:
+#   docker compose -f docker-compose.segmented.yml build
+#   docker compose -f docker-compose.segmented.yml up -d --remove-orphans
+#
+# To skip Compose deployment:
+#   SKIP_COMPOSE_UP=1 ./install-deps-linux-v2.sh
+#
+# To use another Compose file after renaming:
+#   COMPOSE_FILE=docker-compose.yml ./install-deps-linux-v2.sh
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -25,28 +44,24 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VAULT_DATA_DIR="${PROJECT_DIR}/data/vault"
+APT_UPDATED=0
 
-mkdir -p "$VAULT_DATA_DIR"
-$SUDO chown -R "${VAULT_DATA_UID:-100}:${VAULT_DATA_GID:-1000}" "$VAULT_DATA_DIR"
-$SUDO chmod 700 "$VAULT_DATA_DIR"
-
-bold() { printf "\033[1m%s\033[0m\n" "$*"; }
-info() { printf "ℹ️  %s\n" "$*"; }
-ok() { printf "✅ %s\n" "$*"; }
-warn() { printf "⚠️  %s\n" "$*"; }
-err() { printf "❌ %s\n" "$*" >&2; }
+bold() { printf "\n== %s ==\n" "$*"; }
+info() { printf "[info] %s\n" "$*"; }
+ok() { printf "[ok] %s\n" "$*"; }
+warn() { printf "[warn] %s\n" "$*"; }
+err() { printf "[error] %s\n" "$*" >&2; }
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    err "Commande requise introuvable: $1"
+    err "Missing required command: $1"
     exit 1
   fi
 }
 
 detect_os() {
   if [[ ! -r /etc/os-release ]]; then
-    err "Impossible de lire /etc/os-release. Script prévu pour Debian/Ubuntu."
+    err "Cannot read /etc/os-release. This script targets Debian/Ubuntu."
     exit 1
   fi
 
@@ -57,35 +72,31 @@ detect_os() {
     ubuntu|debian)
       ;;
     *)
-      err "Distribution non supportée: ${ID:-inconnue}. Utiliser Debian ou Ubuntu."
+      err "Unsupported distribution: ${ID:-unknown}. Use Debian or Ubuntu."
       exit 1
       ;;
   esac
 
   OS_ID="${ID}"
-  OS_CODENAME="${VERSION_CODENAME:-}"
+  OS_CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
 
   if [[ -z "${OS_CODENAME}" ]]; then
-    OS_CODENAME="$(. /etc/os-release && printf "%s" "${UBUNTU_CODENAME:-}")"
-  fi
-
-  if [[ -z "${OS_CODENAME}" ]]; then
-    err "Impossible de déterminer VERSION_CODENAME pour le dépôt Docker."
+    err "Cannot determine VERSION_CODENAME for apt repositories."
     exit 1
   fi
 
-  ok "OS détecté: ${PRETTY_NAME:-$OS_ID $OS_CODENAME}"
+  ok "Detected OS: ${PRETTY_NAME:-$OS_ID $OS_CODENAME}"
 }
 
 apt_update_once() {
-  if [[ "${APT_UPDATED:-0}" != "1" ]]; then
+  if [[ "${APT_UPDATED}" != "1" ]]; then
     $SUDO apt-get update
     APT_UPDATED=1
   fi
 }
 
 install_base_packages() {
-  bold "[1/6] Paquets de base"
+  bold "1/6 Base packages"
   apt_update_once
   $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ca-certificates \
@@ -94,18 +105,18 @@ install_base_packages() {
     lsb-release \
     apt-transport-https \
     software-properties-common
-  ok "Paquets de base installés"
+  ok "Base packages installed"
 }
 
 stop_docker_units() {
-  info "Arrêt des services Docker/containerd existants..."
+  info "Stopping existing Docker/containerd units..."
   $SUDO systemctl stop docker.service docker.socket containerd.service 2>/dev/null || true
   $SUDO systemctl reset-failed docker.service docker.socket containerd.service 2>/dev/null || true
   $SUDO systemctl unmask docker.service docker.socket containerd.service 2>/dev/null || true
 }
 
 purge_docker_packages() {
-  info "Suppression des anciens paquets Docker/conflictuels..."
+  info "Removing Docker packages and common conflicts..."
 
   local packages=(
     docker
@@ -128,11 +139,11 @@ purge_docker_packages() {
   $SUDO DEBIAN_FRONTEND=noninteractive apt-get purge -y "${packages[@]}" 2>/dev/null || true
   $SUDO DEBIAN_FRONTEND=noninteractive apt-get autoremove -y 2>/dev/null || true
 
-  ok "Paquets Docker précédents supprimés"
+  ok "Previous Docker packages removed"
 }
 
 cleanup_docker_runtime() {
-  info "Nettoyage des sockets et états runtime Docker..."
+  info "Cleaning Docker runtime sockets and state..."
 
   $SUDO rm -f \
     /run/docker.sock \
@@ -145,15 +156,15 @@ cleanup_docker_runtime() {
     /run/containerd
 
   if [[ "${KEEP_DOCKER_DATA:-0}" == "1" ]]; then
-    info "KEEP_DOCKER_DATA=1: conservation de /var/lib/docker et /var/lib/containerd"
+    info "KEEP_DOCKER_DATA=1: preserving /var/lib/docker and /var/lib/containerd"
   else
-    warn "Suppression de /var/lib/docker et /var/lib/containerd"
+    warn "Deleting /var/lib/docker and /var/lib/containerd for a clean reinstall"
     $SUDO rm -rf /var/lib/docker /var/lib/containerd
   fi
 }
 
 configure_docker_repository() {
-  bold "[2/6] Dépôt officiel Docker"
+  bold "2/6 Docker official repository"
 
   $SUDO install -m 0755 -d /etc/apt/keyrings
   $SUDO rm -f /etc/apt/keyrings/docker.gpg
@@ -173,11 +184,11 @@ configure_docker_repository() {
   APT_UPDATED=0
   apt_update_once
 
-  ok "Dépôt Docker configuré"
+  ok "Docker repository configured"
 }
 
 install_docker() {
-  bold "[3/6] Docker Engine + Compose"
+  bold "3/6 Docker Engine and Compose"
 
   stop_docker_units
   purge_docker_packages
@@ -191,54 +202,54 @@ install_docker() {
     docker-buildx-plugin \
     docker-compose-plugin
 
-  info "Réinitialisation systemd Docker..."
+  info "Reloading and repairing systemd units..."
   $SUDO systemctl daemon-reload
   $SUDO systemctl unmask docker.service docker.socket containerd.service 2>/dev/null || true
   $SUDO systemctl reset-failed docker.service docker.socket containerd.service 2>/dev/null || true
 
-  info "Activation containerd, docker.socket et docker.service..."
+  info "Enabling containerd, docker.socket and docker.service..."
   $SUDO systemctl enable --now containerd.service
   $SUDO systemctl enable --now docker.socket
   $SUDO systemctl restart docker.service
 
   if ! $SUDO systemctl is-active --quiet docker.socket; then
-    err "docker.socket n'est pas actif"
+    err "docker.socket is not active"
     $SUDO systemctl status docker.socket --no-pager || true
     exit 1
   fi
 
   if ! $SUDO systemctl is-active --quiet docker.service; then
-    err "docker.service n'est pas actif"
+    err "docker.service is not active"
     $SUDO systemctl status docker.service --no-pager || true
     $SUDO journalctl -u docker.socket -u docker.service -n 120 --no-pager || true
     exit 1
   fi
 
   $SUDO docker version >/dev/null
-  docker compose version >/dev/null || $SUDO docker compose version >/dev/null
+  $SUDO docker compose version >/dev/null
 
-  ok "Docker installé et actif"
+  ok "Docker is installed and active"
 
   if [[ -n "${SUDO}" ]]; then
     if groups "${USER}" | grep -qw docker; then
-      ok "Utilisateur ${USER} déjà membre du groupe docker"
+      ok "User ${USER} is already in the docker group"
     else
-      info "Ajout de ${USER} au groupe docker..."
+      info "Adding ${USER} to the docker group..."
       $SUDO usermod -aG docker "${USER}"
-      warn "Déconnecte/reconnecte ta session pour utiliser docker sans sudo."
+      warn "Log out and back in to use docker without sudo."
     fi
   fi
 }
 
 install_wireguard_tools() {
-  bold "[4/6] WireGuard Tools"
+  bold "4/6 WireGuard tools"
   apt_update_once
   $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools
-  ok "wireguard-tools installé"
+  ok "wireguard-tools installed"
 }
 
 install_vault_cli() {
-  bold "[5/6] HashiCorp Vault CLI"
+  bold "5/6 HashiCorp Vault CLI"
 
   $SUDO install -m 0755 -d /etc/apt/keyrings
   $SUDO rm -f /etc/apt/keyrings/hashicorp.gpg
@@ -257,77 +268,148 @@ install_vault_cli() {
 
   APT_UPDATED=0
   apt_update_once
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y vault
 
-  ok "Vault CLI installé"
+  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y vault
+  ok "Vault CLI installed"
 }
 
 install_utilities() {
-  bold "[6/6] Utilitaires"
+  bold "6/6 Utilities"
   apt_update_once
 
-  local pkgs=(
-    dnsutils
-    ldap-utils
-    python3
-    jq
-    netcat-openbsd
-    iproute2
+  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    dnsutils \
+    ldap-utils \
+    python3 \
+    jq \
+    netcat-openbsd \
+    iproute2 \
     iputils-ping
-  )
 
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"
-  ok "Utilitaires installés"
+  ok "Utilities installed"
 }
 
 prepare_project_dirs() {
-  info "Création des dossiers de travail du projet..."
+  bold "Project directories"
+
   mkdir -p \
     "${PROJECT_DIR}/config/wireguard/3a" \
     "${PROJECT_DIR}/config/wireguard/3b" \
-    "${PROJECT_DIR}/vault-credentials"
+    "${PROJECT_DIR}/vault-credentials" \
+    "${PROJECT_DIR}/data/vault"
 
   touch \
     "${PROJECT_DIR}/config/wireguard/3a/.gitkeep" \
     "${PROJECT_DIR}/config/wireguard/3b/.gitkeep"
 
-  ok "Dossiers projet prêts"
+  info "Preparing local Vault storage permissions..."
+  $SUDO chown -R "${VAULT_DATA_UID:-100}:${VAULT_DATA_GID:-1000}" "${PROJECT_DIR}/data/vault"
+  $SUDO chmod 700 "${PROJECT_DIR}/data/vault"
+
+  ok "Project directories are ready"
+}
+
+deploy_compose_stack() {
+  if [[ "${SKIP_COMPOSE_UP:-0}" == "1" ]]; then
+    warn "SKIP_COMPOSE_UP=1: skipping Docker Compose build/up"
+    return
+  fi
+
+  bold "Docker Compose stack"
+
+  local compose_file="${COMPOSE_FILE:-${PROJECT_DIR}/docker-compose.segmented.yml}"
+
+  if [[ "${compose_file}" != /* ]]; then
+    compose_file="${PROJECT_DIR}/${compose_file}"
+  fi
+
+  if [[ ! -f "${compose_file}" ]]; then
+    err "Compose file not found: ${compose_file}"
+    exit 1
+  fi
+
+  local compose_args=(
+    --project-directory "${PROJECT_DIR}"
+    -f "${compose_file}"
+  )
+
+  if [[ -n "${COMPOSE_PROFILES:-}" ]]; then
+    local profile
+    IFS=',' read -r -a profiles <<< "${COMPOSE_PROFILES}"
+    for profile in "${profiles[@]}"; do
+      [[ -n "${profile}" ]] && compose_args+=(--profile "${profile}")
+    done
+  fi
+
+  if [[ "${COMPOSE_DOWN_FIRST:-0}" == "1" ]]; then
+    warn "COMPOSE_DOWN_FIRST=1: stopping existing stack before rebuild"
+    $SUDO docker compose "${compose_args[@]}" down --remove-orphans || true
+  fi
+
+  info "Validating Compose file..."
+  $SUDO docker compose "${compose_args[@]}" config --quiet
+
+  info "Building Compose images..."
+  $SUDO docker compose "${compose_args[@]}" build
+
+  info "Starting Compose stack..."
+  $SUDO docker compose "${compose_args[@]}" up -d --remove-orphans
+
+  ok "Compose stack is running"
 }
 
 print_summary() {
-  bold "Résumé"
-  docker --version || $SUDO docker --version
-  docker compose version || $SUDO docker compose version
+  bold "Summary"
+
+  $SUDO docker --version || true
+  $SUDO docker compose version || true
   wg --version || true
   vault version || true
 
   cat <<'EOF'
 
-Commandes utiles :
+Useful commands:
   sudo systemctl status docker.socket docker.service --no-pager
-  docker compose config --quiet
-  docker compose up -d
+  sudo journalctl -u docker.socket -u docker.service -n 120 --no-pager
+  docker compose -f docker-compose.segmented.yml ps
+  docker compose -f docker-compose.segmented.yml logs -f
 
-Réinstallation Docker en conservant les données existantes :
+Keep existing Docker data:
   KEEP_DOCKER_DATA=1 ./install-deps-linux-v2.sh
+
+Skip Compose build/up:
+  SKIP_COMPOSE_UP=1 ./install-deps-linux-v2.sh
+
+Use another Compose file after renaming:
+  COMPOSE_FILE=docker-compose.yml ./install-deps-linux-v2.sh
+
+Start debug test containers too:
+  COMPOSE_PROFILES=debug ./install-deps-linux-v2.sh
+
+Override Vault local storage ownership:
+  VAULT_DATA_UID=100 VAULT_DATA_GID=1000 ./install-deps-linux-v2.sh
 EOF
 }
 
 main() {
-  bold "Installation dépendances — Entreprise 3"
+  bold "Entreprise 3 dependency installer"
 
   require_command apt-get
   require_command systemctl
+
   detect_os
   install_base_packages
+
   require_command curl
   require_command gpg
   require_command dpkg
+
   install_docker
   install_wireguard_tools
   install_vault_cli
   install_utilities
   prepare_project_dirs
+  deploy_compose_stack
   print_summary
 }
 
