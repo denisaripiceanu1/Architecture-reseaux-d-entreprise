@@ -1,0 +1,319 @@
+# =============================================================================
+# Infrastructure Réseau Entreprise 3a / 3b — version segmentée
+#
+# Objectif :
+#   - services_net : services internes
+#   - voice_net    : téléphonie / VoIP
+#   - dmz_net      : services exposés / DMZ
+#
+# pfSense reste le routeur/firewall logique entre ces réseaux :
+#   services : 192.168.3.254
+#   voix     : 192.168.30.254
+#   DMZ      : 192.168.40.254
+#
+# Docker utilise .250 comme gateway technique de bridge afin de laisser .254
+# libre dans le plan d'adressage pfSense.
+# =============================================================================
+
+networks:
+  services_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.3.0/24
+          gateway: 192.168.3.250
+
+  voice_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.30.0/24
+          gateway: 192.168.30.250
+
+  dmz_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.40.0/24
+          gateway: 192.168.40.250
+
+services:
+  # ---------------------------------------------------------------------------
+  # SERVICES INTERNES
+  # ---------------------------------------------------------------------------
+
+  dns:
+    image: ubuntu/bind9:9.18-24.04_edge
+    container_name: dns_e3
+    hostname: dns.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.1
+    volumes:
+      - ./config/bind-segmented/named.conf:/etc/bind/named.conf:ro
+      - ./config/bind-segmented/zones/db.lafassonnade.lan:/etc/bind/zones/db.lafassonnade.lan:ro
+      - ./config/bind-segmented/zones/db.192.168.3:/etc/bind/zones/db.192.168.3:ro
+      - ./config/bind-segmented/zones/db.192.168.30:/etc/bind/zones/db.192.168.30:ro
+      - ./config/bind-segmented/zones/db.192.168.40:/etc/bind/zones/db.192.168.40:ro
+      - bind_data:/var/cache/bind
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD-SHELL", "rndc status | grep -q 'server is up and running'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  dhcp:
+    image: networkboot/dhcpd:latest
+    container_name: dhcp_e3
+    hostname: dhcp.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.2
+    volumes:
+      - ./config/dhcpd-segmented/dhcpd.conf:/data/dhcpd.conf:ro
+      - dhcpd_leases:/data
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      dns:
+        condition: service_healthy
+
+  openldap:
+    build:
+      context: ./config/openldap
+      dockerfile: Dockerfile
+    image: entreprise3/openldap:1.5.0
+    platform: linux/amd64
+    container_name: openldap
+    hostname: ldap.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.5
+    environment:
+      LDAP_ORGANISATION: "Entreprise 3"
+      LDAP_DOMAIN: "lafassonnade.lan"
+      LDAP_BASE_DN: "dc=lafassonnade,dc=lan"
+      LDAP_ADMIN_PASSWORD_FILE: /run/secrets/ldap-admin-password
+      LDAP_CONFIG_PASSWORD_FILE: /run/secrets/ldap-config-password
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD_FILE: /run/secrets/ldap-readonly-password
+      LDAP_RFC2307BIS_SCHEMA: "false"
+      LDAP_TLS: "false"
+      LDAP_REPLICATION: "false"
+    volumes:
+      - openldap_data:/var/lib/ldap
+      - openldap_config:/etc/ldap/slapd.d
+      - openldap_secrets:/run/secrets
+    ports:
+      - "389:389"
+      - "636:636"
+    restart: unless-stopped
+    depends_on:
+      dns:
+        condition: service_healthy
+      vault-agent-openldap:
+        condition: service_healthy
+
+  vault-agent-openldap:
+    image: hashicorp/vault:1.20
+    container_name: vault-agent-openldap
+    hostname: vault-agent-ldap.lafassonnade.lan
+    user: root
+    entrypoint: vault
+    command: agent -config=/vault/agent/config.hcl
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.16
+    volumes:
+      - ./vault-credentials/openldap:/vault/agent
+      - ./config/vault/agents/vault-agent-openldap.hcl:/vault/agent/config.hcl:ro
+      - ./config/vault/agents/templates:/vault/agent/templates:ro
+      - openldap_secrets:/run/secrets
+    restart: unless-stopped
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/ldap-admin-password"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: phpldapadmin
+    hostname: ldapadmin.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.6
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "192.168.3.5"
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    depends_on:
+      - openldap
+
+  openvpn:
+    image: openvpn/openvpn-as:3.1.0-e22fe316-Ubuntu24
+    container_name: openvpn_gateway
+    hostname: vpn.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.10
+    volumes:
+      - openvpn_data:/etc/openvpn
+      - ./vault-credentials/openvpn:/vault/agent:ro
+    ports:
+      - "1194:1194/udp"
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped
+    environment:
+      OVPN_SERVER: 10.8.0.0/24
+      OVPN_PUSH: "route 192.168.3.0 255.255.255.0"
+    depends_on:
+      - dns
+
+  vault:
+    image: hashicorp/vault:1.20
+    container_name: vault
+    hostname: vault.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.15
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_ADDR: "http://0.0.0.0:8200"
+      VAULT_API_ADDR: "http://192.168.3.15:8200"
+      VAULT_LOCAL_CONFIG: >
+        ui = true
+        disable_mlock = true
+        listener "tcp" {
+          address = "0.0.0.0:8200"
+          tls_disable = true
+        }
+        storage "file" {
+          path = "/vault/data"
+        }
+        api_addr = "http://192.168.3.15:8200"
+    volumes:
+      - vault_data:/vault/data
+      - ./config/vault/policies:/vault/policies:ro
+    privileged: true
+    command: vault server -config=/vault/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q -O- http://127.0.0.1:8200/v1/sys/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  vault-init:
+    build:
+      context: .
+      dockerfile: config/vault/Dockerfile.vault-init
+    image: entreprise3/vault-init:latest
+    container_name: vault-init
+    hostname: vault-init.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.17
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+    working_dir: /project
+    volumes:
+      - ./config:/project/config
+      - ./vault-credentials:/project/vault-credentials
+    depends_on:
+      vault:
+        condition: service_started
+    restart: "no"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    hostname: portainer.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.20
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "9443:9443"
+      - "9000:9000"
+      - "8000:8000"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # VOIX
+  # ---------------------------------------------------------------------------
+
+  asterisk:
+    image: andrius/asterisk:22-cert
+    container_name: asterisk_voip_e3
+    hostname: voip.lafassonnade.lan
+    networks:
+      voice_net:
+        ipv4_address: 192.168.30.3
+    volumes:
+      - ./config/asterisk/asterisk.conf:/etc/asterisk/asterisk.conf:ro
+      - ./config/asterisk/sip.conf:/etc/asterisk/sip.conf:ro
+      - ./config/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - asterisk_data:/var/lib/asterisk
+      - ./vault-credentials/asterisk:/vault/agent:ro
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10100:10000-10100/udp"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # DMZ
+  # ---------------------------------------------------------------------------
+
+  web_3b:
+    image: nginx:alpine
+    container_name: web_entreprise3b
+    hostname: web.lafassonnade.lan
+    networks:
+      dmz_net:
+        ipv4_address: 192.168.40.4
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/html/:/usr/share/nginx/html/:ro
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  bind_data:
+  dhcpd_leases:
+  asterisk_data:
+  openvpn_data:
+  vault_data:
+  portainer_data:
+  openldap_data:
+  openldap_config:
+  openldap_secrets:
