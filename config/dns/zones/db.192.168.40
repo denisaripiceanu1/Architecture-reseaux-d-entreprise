@@ -1,0 +1,13 @@
+$TTL 86400
+@   IN  SOA dns.lafassonnade.lan. admin.lafassonnade.lan. (
+        2026052701 ; serial
+        3600
+        1800
+        604800
+        86400 )
+
+@   IN  NS  dns.lafassonnade.lan.
+
+4   IN  PTR web.lafassonnade.lan.
+241 IN  PTR admin-dmz.lafassonnade.lan.
+254 IN  PTR pfsense-dmz.lafassonnade.lan.

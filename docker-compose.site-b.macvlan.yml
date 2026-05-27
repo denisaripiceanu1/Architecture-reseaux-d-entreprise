@@ -1,0 +1,40 @@
+# =============================================================================
+# Jour J pfSense — Site B : DMZ
+#
+# Ce fichier est prévu pour le PC Ubuntu qui héberge le service DMZ.
+# Le conteneur web apparaît directement sur le réseau DMZ via macvlan.
+#
+# Variable à définir avant le lancement :
+#   DMZ_IFACE interface Ubuntu branchée sur le réseau DMZ
+# =============================================================================
+
+name: rzoentreprise-site-b
+
+networks:
+  dmz_net:
+    name: rzoentreprise_siteb_dmz_macvlan
+    driver: macvlan
+    driver_opts:
+      parent: ${DMZ_IFACE:?DMZ_IFACE doit pointer vers l'interface DMZ}
+    ipam:
+      config:
+        - subnet: 192.168.40.0/24
+          gateway: 192.168.40.254
+
+services:
+  web_3b:
+    image: nginx:alpine
+    container_name: web_entreprise3b
+    hostname: web.lafassonnade.lan
+    networks:
+      dmz_net:
+        ipv4_address: 192.168.40.4
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/html/:/usr/share/nginx/html/:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

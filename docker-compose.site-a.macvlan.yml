@@ -1,0 +1,287 @@
+# =============================================================================
+# Jour J pfSense — Site A : services internes + voix
+#
+# Ce fichier est prévu pour le PC Ubuntu qui héberge :
+#   - SERVICES : 192.168.3.0/24
+#   - VOICE    : 192.168.30.0/24
+#
+# Les conteneurs sont attachés en macvlan : pfSense les voit directement avec
+# leurs IP 192.168.x.x. Il n'y a donc pas de conteneur admin/debug ici.
+#
+# Variables à définir avant le lancement :
+#   SERVICES_IFACE   interface Ubuntu branchée sur le réseau SERVICES
+#   VOICE_IFACE      interface Ubuntu branchée sur le réseau VOICE
+#   OPENVPN_HOSTNAME IP/FQDN de l'entrée VPN côté pfSense, ex. vpn.lafassonnade.lan
+# =============================================================================
+
+name: rzoentreprise-site-a
+
+networks:
+  services_net:
+    name: rzoentreprise_sitea_services_macvlan
+    driver: macvlan
+    driver_opts:
+      parent: ${SERVICES_IFACE:?SERVICES_IFACE doit pointer vers l'interface SERVICES}
+    ipam:
+      config:
+        - subnet: 192.168.3.0/24
+          gateway: 192.168.3.254
+
+  voice_net:
+    name: rzoentreprise_sitea_voice_macvlan
+    driver: macvlan
+    driver_opts:
+      parent: ${VOICE_IFACE:?VOICE_IFACE doit pointer vers l'interface VOICE}
+    ipam:
+      config:
+        - subnet: 192.168.30.0/24
+          gateway: 192.168.30.254
+
+services:
+  dns:
+    image: ubuntu/bind9:9.18-24.04_edge
+    container_name: dns_e3
+    hostname: dns.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.1
+    volumes:
+      - ./config/dns/named.conf:/etc/bind/named.conf:ro
+      - ./config/dns/zones/db.lafassonnade.lan:/etc/bind/zones/db.lafassonnade.lan:ro
+      - ./config/dns/zones/db.192.168.3:/etc/bind/zones/db.192.168.3:ro
+      - ./config/dns/zones/db.192.168.30:/etc/bind/zones/db.192.168.30:ro
+      - ./config/dns/zones/db.192.168.40:/etc/bind/zones/db.192.168.40:ro
+      - bind_data:/var/cache/bind
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD-SHELL", "rndc status | grep -q 'server is up and running'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  dhcp:
+    image: networkboot/dhcpd:latest
+    container_name: dhcp_e3
+    hostname: dhcp.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.2
+    volumes:
+      - ./config/dhcp/dhcpd.conf:/data/dhcpd.conf:ro
+      - dhcpd_leases:/data
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      dns:
+        condition: service_healthy
+
+  openldap:
+    build:
+      context: ./config/openldap
+      dockerfile: Dockerfile
+    image: entreprise3/openldap:1.5.0
+    platform: linux/amd64
+    container_name: openldap
+    hostname: ldap.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.5
+    environment:
+      LDAP_ORGANISATION: "Entreprise 3"
+      LDAP_DOMAIN: "lafassonnade.lan"
+      LDAP_BASE_DN: "dc=lafassonnade,dc=lan"
+      LDAP_ADMIN_PASSWORD_FILE: /run/secrets/ldap-admin-password
+      LDAP_CONFIG_PASSWORD_FILE: /run/secrets/ldap-config-password
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD_FILE: /run/secrets/ldap-readonly-password
+      LDAP_RFC2307BIS_SCHEMA: "false"
+      LDAP_TLS: "false"
+      LDAP_REPLICATION: "false"
+    volumes:
+      - openldap_data:/var/lib/ldap
+      - openldap_config:/etc/ldap/slapd.d
+      - openldap_secrets:/run/secrets
+    restart: unless-stopped
+    depends_on:
+      dns:
+        condition: service_healthy
+      vault-agent-openldap:
+        condition: service_healthy
+
+  vault-agent-openldap:
+    image: hashicorp/vault:1.20
+    container_name: vault-agent-openldap
+    hostname: vault-agent-ldap.lafassonnade.lan
+    user: root
+    entrypoint: vault
+    command: agent -config=/vault/agent/config.hcl
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.16
+    volumes:
+      - ./vault-credentials/openldap:/vault/agent
+      - ./config/vault/agents/vault-agent-openldap.hcl:/vault/agent/config.hcl:ro
+      - ./config/vault/agents/templates:/vault/agent/templates:ro
+      - openldap_secrets:/run/secrets
+    restart: unless-stopped
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /run/secrets/ldap-admin-password"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: phpldapadmin
+    hostname: ldapadmin.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.6
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "192.168.3.5"
+      PHPLDAPADMIN_HTTPS: "false"
+    restart: unless-stopped
+    depends_on:
+      - openldap
+
+  openvpn:
+    image: openvpn/openvpn-as:3.1.0-e22fe316-Ubuntu24
+    container_name: openvpn_gateway
+    hostname: vpn.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.10
+    volumes:
+      - openvpn_data:/etc/openvpn
+      - ./vault-credentials/openvpn:/vault/agent:ro
+    cap_add:
+      - NET_ADMIN
+      - MKNOD
+    devices:
+      - /dev/net/tun
+    post_start:
+      - command: >
+          /bin/bash -lc '
+          cd /usr/local/openvpn_as/scripts &&
+          for i in $(seq 1 60); do
+            if ./sacli ConfigQuery >/dev/null 2>&1; then
+              ./sacli -k "vpn.server.daemon.ovpndco" -v "false" ConfigPut &&
+              if [ -n "$$OPENVPN_HOSTNAME" ]; then
+                ./sacli -k "host.name" -v "$$OPENVPN_HOSTNAME" ConfigPut;
+              fi &&
+              ./sacli start;
+              exit 0;
+            fi;
+            sleep 2;
+          done;
+          echo "sacli is not ready, OpenVPN defaults could not be applied" >&2;
+          exit 1
+          '
+    restart: unless-stopped
+    environment:
+      OVPN_SERVER: 10.8.0.0/24
+      OVPN_PUSH: "route 192.168.3.0 255.255.255.0"
+      OPENVPN_HOSTNAME: "${OPENVPN_HOSTNAME:-vpn.lafassonnade.lan}"
+    depends_on:
+      - dns
+
+  vault:
+    image: hashicorp/vault:1.20
+    container_name: vault
+    hostname: vault.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.15
+    environment:
+      VAULT_ADDR: "http://0.0.0.0:8200"
+      VAULT_API_ADDR: "http://192.168.3.15:8200"
+      VAULT_LOCAL_CONFIG: >
+        ui = true
+        disable_mlock = true
+        listener "tcp" {
+          address = "0.0.0.0:8200"
+          tls_disable = true
+        }
+        storage "file" {
+          path = "/vault/data"
+        }
+        api_addr = "http://192.168.3.15:8200"
+    volumes:
+      - ./data/vault:/vault/data
+      - ./config/vault/policies:/vault/policies:ro
+    privileged: true
+    command: vault server -config=/vault/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider 'http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  vault-init:
+    build:
+      context: .
+      dockerfile: config/vault/Dockerfile.vault-init
+    image: entreprise3/vault-init:latest
+    container_name: vault-init
+    hostname: vault-init.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.17
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+    working_dir: /project
+    volumes:
+      - ./config:/project/config
+      - ./vault-credentials:/project/vault-credentials
+    depends_on:
+      vault:
+        condition: service_healthy
+    restart: "no"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    hostname: portainer.lafassonnade.lan
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.20
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: unless-stopped
+
+  asterisk:
+    image: andrius/asterisk:22-cert
+    container_name: asterisk_voip_e3
+    hostname: voip.lafassonnade.lan
+    networks:
+      voice_net:
+        ipv4_address: 192.168.30.3
+    volumes:
+      - ./config/asterisk-pjsip/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./config/asterisk-pjsip/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/asterisk-pjsip/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - asterisk_data:/var/lib/asterisk
+      - ./vault-credentials/asterisk:/vault/agent:ro
+    restart: unless-stopped
+
+volumes:
+  bind_data:
+  dhcpd_leases:
+  asterisk_data:
+  openvpn_data:
+  portainer_data:
+  openldap_data:
+  openldap_config:
+  openldap_secrets:

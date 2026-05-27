@@ -28,15 +28,14 @@ set -Eeuo pipefail
 # Override Vault storage ownership if needed:
 #   VAULT_DATA_UID=100 VAULT_DATA_GID=1000 ./install-deps-linux-v2.sh
 #
-# The segmented Compose stack is built and started by default:
-#   docker compose -f docker-compose.segmented.yml build
-#   docker compose -f docker-compose.segmented.yml up -d --remove-orphans
+# The script installs dependencies and can optionally deploy a Compose stack.
+# For the day-of lab, prefer the site launchers:
+#   ./start-site-a.sh --install-deps
+#   ./start-site-b.sh --install-deps
 #
-# To skip Compose deployment:
-#   SKIP_COMPOSE_UP=1 ./install-deps-linux-v2.sh
-#
-# To use another Compose file after renaming:
-#   COMPOSE_FILE=docker-compose.yml ./install-deps-linux-v2.sh
+# To deploy a Compose file directly:
+#   COMPOSE_FILE=docker-compose.site-a.macvlan.yml ./install-deps-linux-v2.sh
+#   COMPOSE_FILE=docker-compose.site-b.macvlan.yml ./install-deps-linux-v2.sh
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -336,14 +335,8 @@ prepare_project_dirs() {
   bold "Project directories"
 
   mkdir -p \
-    "${PROJECT_DIR}/config/wireguard/3a" \
-    "${PROJECT_DIR}/config/wireguard/3b" \
     "${PROJECT_DIR}/vault-credentials" \
     "${PROJECT_DIR}/data/vault"
-
-  touch \
-    "${PROJECT_DIR}/config/wireguard/3a/.gitkeep" \
-    "${PROJECT_DIR}/config/wireguard/3b/.gitkeep"
 
   info "Preparing local Vault storage permissions..."
   $SUDO chown -R "${VAULT_DATA_UID:-100}:${VAULT_DATA_GID:-1000}" "${PROJECT_DIR}/data/vault"
@@ -360,7 +353,13 @@ deploy_compose_stack() {
 
   bold "Docker Compose stack"
 
-  local compose_file="${COMPOSE_FILE:-${PROJECT_DIR}/docker-compose.segmented.yml}"
+  local compose_file="${COMPOSE_FILE:-}"
+
+  if [[ -z "${compose_file}" ]]; then
+    warn "COMPOSE_FILE is not set: skipping Docker Compose deployment"
+    warn "Use ./start-site-a.sh --install-deps or ./start-site-b.sh --install-deps for the day-of lab"
+    return
+  fi
 
   if [[ "${compose_file}" != /* ]]; then
     compose_file="${PROJECT_DIR}/${compose_file}"
@@ -414,20 +413,15 @@ print_summary() {
 Useful commands:
   sudo systemctl status docker.socket docker.service --no-pager
   sudo journalctl -u docker.socket -u docker.service -n 120 --no-pager
-  docker compose -f docker-compose.segmented.yml ps
-  docker compose -f docker-compose.segmented.yml logs -f
+  ./start-site-a.sh
+  ./start-site-b.sh
 
 Keep existing Docker data:
   KEEP_DOCKER_DATA=1 ./install-deps-linux-v2.sh
 
-Skip Compose build/up:
-  SKIP_COMPOSE_UP=1 ./install-deps-linux-v2.sh
-
-Use another Compose file after renaming:
-  COMPOSE_FILE=docker-compose.yml ./install-deps-linux-v2.sh
-
-Start debug test containers too:
-  COMPOSE_PROFILES=debug ./install-deps-linux-v2.sh
+Use the pfSense/macvlan Compose files:
+  COMPOSE_FILE=docker-compose.site-a.macvlan.yml ./install-deps-linux-v2.sh
+  COMPOSE_FILE=docker-compose.site-b.macvlan.yml ./install-deps-linux-v2.sh
 
 Override Vault local storage ownership:
   VAULT_DATA_UID=100 VAULT_DATA_GID=1000 ./install-deps-linux-v2.sh
