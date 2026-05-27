@@ -214,7 +214,12 @@ services:
         }
         api_addr = "http://192.168.3.15:8200"
     volumes:
-      - vault_data:/vault/data
+      # Bind mount local pour contrôler les permissions du stockage Vault.
+      # Sur le serveur Linux :
+      #   mkdir -p data/vault
+      #   sudo chown -R 100:1000 data/vault
+      #   sudo chmod 700 data/vault
+      - ./data/vault:/vault/data
       - ./config/vault/policies:/vault/policies:ro
     privileged: true
     command: vault server -config=/vault/config
@@ -352,7 +357,6 @@ volumes:
   dhcpd_leases:
   asterisk_data:
   openvpn_data:
-  vault_data:
   portainer_data:
   openldap_data:
   openldap_config:
