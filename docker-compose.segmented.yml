@@ -58,9 +58,9 @@ services:
       - bind_data:/var/cache/bind
     ports:
       # Évite le conflit avec systemd-resolved/dnsmasq déjà présent sur l'hôte.
-      # Test depuis le serveur : dig @127.0.0.1 -p 1053 web.lafassonnade.lan
-      - "127.0.0.1:1053:53/udp"
-      - "127.0.0.1:1053:53/tcp"
+      # Test local ou depuis une autre machine : dig @IP_SERVEUR -p 1053 web.lafassonnade.lan
+      - "1053:53/udp"
+      - "1053:53/tcp"
     restart: unless-stopped
     cap_add:
       - NET_BIND_SERVICE
@@ -178,6 +178,7 @@ services:
       - openvpn_data:/etc/openvpn
       - ./vault-credentials/openvpn:/vault/agent:ro
     ports:
+      - "943:943/tcp"
       - "1194:1194/udp"
     cap_add:
       - NET_ADMIN
@@ -315,6 +316,43 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # ---------------------------------------------------------------------------
+  # ADMIN
+  # Bastion d'administration pour le lab. Il est volontairement multi-réseaux
+  # et monte le socket Docker : il peut donc contourner la segmentation pfSense.
+  # À utiliser pour configurer/debugger, pas comme preuve de filtrage firewall.
+  #
+  # Lancer avec :
+  #   docker compose -f docker-compose.segmented.yml --profile admin up -d admin
+  # Entrer dedans :
+  #   docker exec -it admin_e3 bash
+  # ---------------------------------------------------------------------------
+
+  admin:
+    build:
+      context: ./config/admin
+      dockerfile: Dockerfile
+    image: entreprise3/admin-tools:latest
+    container_name: admin_e3
+    hostname: admin.lafassonnade.lan
+    profiles:
+      - admin
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      COMPOSE_FILE: /workspace/docker-compose.segmented.yml
+    networks:
+      services_net:
+        ipv4_address: 192.168.3.241
+      voice_net:
+        ipv4_address: 192.168.30.241
+      dmz_net:
+        ipv4_address: 192.168.40.241
 
   # ---------------------------------------------------------------------------
   # DEBUG / TESTS

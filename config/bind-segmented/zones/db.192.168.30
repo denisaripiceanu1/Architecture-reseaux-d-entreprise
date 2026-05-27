@@ -9,4 +9,5 @@ $TTL 86400
 @   IN  NS  dns.lafassonnade.lan.
 
 3   IN  PTR voip.lafassonnade.lan.
+241 IN  PTR admin-voice.lafassonnade.lan.
 254 IN  PTR pfsense-voice.lafassonnade.lan.
