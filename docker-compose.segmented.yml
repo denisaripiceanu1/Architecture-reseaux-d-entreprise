@@ -15,8 +15,11 @@
 # libre dans le plan d'adressage pfSense.
 # =============================================================================
 
+name: rzoentreprise
+
 networks:
   services_net:
+    name: rzoentreprise_services_net
     driver: bridge
     ipam:
       config:
@@ -24,6 +27,7 @@ networks:
           gateway: 192.168.3.250
 
   voice_net:
+    name: rzoentreprise_voice_net
     driver: bridge
     ipam:
       config:
@@ -31,6 +35,7 @@ networks:
           gateway: 192.168.30.250
 
   dmz_net:
+    name: rzoentreprise_dmz_net
     driver: bridge
     ipam:
       config:
