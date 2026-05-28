@@ -80,10 +80,7 @@ services:
         condition: service_healthy
 
   openldap:
-    build:
-      context: ./config/openldap
-      dockerfile: Dockerfile
-    image: entreprise3/openldap:1.5.0
+    image: osixia/openldap:1.5.0
     platform: linux/amd64
     container_name: openldap
     hostname: ldap.lafassonnade.lan
@@ -94,14 +91,18 @@ services:
       LDAP_ORGANISATION: "Entreprise 3"
       LDAP_DOMAIN: "lafassonnade.lan"
       LDAP_BASE_DN: "dc=lafassonnade,dc=lan"
-      LDAP_ADMIN_PASSWORD_FILE: /run/secrets/ldap-admin-password
-      LDAP_CONFIG_PASSWORD_FILE: /run/secrets/ldap-config-password
       LDAP_READONLY_USER: "true"
       LDAP_READONLY_USER_USERNAME: "readonly"
-      LDAP_READONLY_USER_PASSWORD_FILE: /run/secrets/ldap-readonly-password
       LDAP_RFC2307BIS_SCHEMA: "false"
       LDAP_TLS: "false"
       LDAP_REPLICATION: "false"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export LDAP_ADMIN_PASSWORD="$(cat /run/secrets/ldap-admin-password)"
+        export LDAP_CONFIG_PASSWORD="$(cat /run/secrets/ldap-config-password)"
+        export LDAP_READONLY_USER_PASSWORD="$(cat /run/secrets/ldap-readonly-password)"
+        exec /container/tool/run
     volumes:
       - openldap_data:/var/lib/ldap
       - openldap_config:/etc/ldap/slapd.d

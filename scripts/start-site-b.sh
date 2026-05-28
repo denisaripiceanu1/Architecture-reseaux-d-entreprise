@@ -62,15 +62,37 @@ set +a
 printf '== Site B macvlan ==\n'
 printf 'DMZ_IFACE=%s\n' "${DMZ_IFACE}"
 
+compose() {
+  docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" "$@"
+}
+
+compose_pull_with_retries() {
+  local max_attempts="${COMPOSE_PULL_RETRIES:-5}"
+  local attempt
+
+  for attempt in $(seq 1 "${max_attempts}"); do
+    if compose pull --ignore-buildable; then
+      return 0
+    fi
+
+    printf '[warn] Compose image pull failed, retry %s/%s\n' "${attempt}" "${max_attempts}" >&2
+    sleep $((attempt * 5))
+  done
+
+  printf '[error] Compose image pull failed after %s attempts\n' "${max_attempts}" >&2
+  return 1
+}
+
 if [[ "${INSTALL_DEPS}" == "1" ]]; then
   COMPOSE_FILE="${COMPOSE_FILE_PATH}" COMPOSE_ENV_FILE="${ENV_FILE}" "${PROJECT_DIR}/scripts/install-deps-linux.sh"
   exit 0
 fi
 
 if [[ "${DOWN_FIRST}" == "1" ]]; then
-  docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" down --remove-orphans
+  compose down --remove-orphans
 fi
 
-docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" config --quiet
-docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" up -d --build --remove-orphans
-docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" ps
+compose config --quiet
+compose_pull_with_retries
+compose up -d --build --remove-orphans
+compose ps

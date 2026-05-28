@@ -170,3 +170,42 @@ Attendu :
 ```text
 Storage Driver: vfs
 ```
+
+## 10. Timeout pendant le pull d'une image
+
+Si Docker affiche :
+
+```text
+context deadline exceeded while awaiting headers
+```
+
+ce n'est generalement pas une erreur de configuration du service. C'est un
+timeout reseau pendant le telechargement depuis le registre Docker.
+
+Retenter le pull :
+
+```bash
+docker pull osixia/phpldapadmin:0.9.0
+./scripts/start-site-a.sh
+```
+
+Le script retente automatiquement les pulls plusieurs fois. Pour augmenter le
+nombre de tentatives :
+
+```bash
+COMPOSE_PULL_RETRIES=10 ./scripts/start-site-a.sh
+```
+
+Si phpLDAPadmin bloque mais que le reste doit demarrer, lancer temporairement
+les services essentiels sans phpLDAPadmin :
+
+```bash
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml up -d \
+  dns dhcp vault vault-init vault-agent-openldap openldap openvpn portainer asterisk
+```
+
+Puis relancer phpLDAPadmin quand le reseau repond mieux :
+
+```bash
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml up -d phpldapadmin
+```

@@ -449,6 +449,23 @@ deploy_compose_stack() {
   info "Validating Compose file..."
   "${docker_compose_cmd[@]}" "${compose_args[@]}" config --quiet
 
+  info "Pulling Compose images..."
+  local max_pull_attempts="${COMPOSE_PULL_RETRIES:-5}"
+  local pull_attempt
+  for pull_attempt in $(seq 1 "${max_pull_attempts}"); do
+    if "${docker_compose_cmd[@]}" "${compose_args[@]}" pull --ignore-buildable; then
+      break
+    fi
+
+    if [[ "${pull_attempt}" == "${max_pull_attempts}" ]]; then
+      err "Compose image pull failed after ${max_pull_attempts} attempts"
+      exit 1
+    fi
+
+    warn "Compose image pull failed, retry ${pull_attempt}/${max_pull_attempts}"
+    sleep $((pull_attempt * 5))
+  done
+
   info "Building Compose images..."
   "${docker_compose_cmd[@]}" "${compose_args[@]}" build
 

@@ -1,7 +1,6 @@
-# Migration Asterisk vers PJSIP
+# Asterisk PJSIP
 
-Cette configuration remplace l'ancien fichier `sip.conf` utilisé par `chan_sip`.
-Asterisk 22 utilise PJSIP par défaut, donc les commandes à utiliser sont :
+Asterisk 22 utilise PJSIP par défaut. Les commandes à utiliser sont :
 
 ```bash
 docker exec asterisk_voip_e3 asterisk -rx "pjsip show endpoints"
@@ -22,7 +21,7 @@ L'extension `600` lance un test d'echo.
 Après modification :
 
 ```bash
-docker compose -f docker-compose.segmented.yml up -d --force-recreate asterisk
+./start-site-a.sh
 ```
 
 Si les softphones sont hors du réseau Docker et que l'enregistrement fonctionne

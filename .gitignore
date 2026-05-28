@@ -3,25 +3,10 @@
 # =============================================================================
 
 # Credentials Vault (JAMAIS dans git)
-# vault-credentials/
-
-# Clés WireGuard générées
-# wg0.conf générés par vault-init.sh (contiennent les clés privées)
-# config/wireguard/3a/wg0.conf
-# config/wireguard/3b/wg0.conf
-
-# config/wireguard/3a/privatekey
-# config/wireguard/3a/publickey
-# config/wireguard/3b/privatekey
-# config/wireguard/3b/publickey
+vault-credentials/
 
 # Fichiers secrets injectés par Vault Agent au runtime
-# **/*.env
-# **/sip-secrets.conf
-
-# Certificats OpenVPN générés
-# *.ovpn
-# config/openvpn/pki/
+data/vault
 
 # Données persistantes Docker (si montées en local)
 data/
@@ -29,4 +14,10 @@ data/
 # Logs
 *.log
 *.DS_Store
+
+# Dépendances macos (pour test local uniquement)
 install-deps-macos.sh
+
+# Env
+env/*.env
+!env/*.env.example
