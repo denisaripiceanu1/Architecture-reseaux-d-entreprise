@@ -240,7 +240,7 @@ services:
       services_net:
         ipv4_address: 192.168.3.17
     environment:
-      VAULT_ADDR: "http://vault:8200"
+      VAULT_ADDR: "http://192.168.3.15:8200"
     working_dir: /project
     volumes:
       - ./config:/project/config
