@@ -4,7 +4,9 @@ Ce document décrit uniquement les étapes à faire depuis la machine admin
 physique. Il complète :
 
 ```text
-docs/runbook-jour-j-pfsense-macvlan.md
+docs/runbook-site-a-jour-j.md
+docs/runbook-site-b-jour-j.md
+docs/runbook-pfsense-jour-j.md
 docs/pfsense-regles-segmentation.md
 ```
 
@@ -104,10 +106,21 @@ jq -r .root_token vault-credentials/vault-init.json
 
 ## 5. Vérifier LDAP
 
+Sur le PC Site A, `./scripts/start-site-a.sh` initialise automatiquement
+l'arborescence LDAP de base. Si besoin, relancer l'amorcage :
+
+```bash
+./scripts/bootstrap-openldap-tree.sh
+```
+
 Tester l'annuaire :
 
 ```bash
 ldapsearch -x -H ldap://192.168.3.5 -b "" -s base namingContexts
+ldapsearch -x -H ldap://192.168.3.5 -b "dc=lafassonnade,dc=lan" "(uid=alice)"
+ldapwhoami -x -H ldap://192.168.3.5 \
+  -D "uid=alice,ou=users,dc=lafassonnade,dc=lan" \
+  -w "alice123"
 ```
 
 Ouvrir phpLDAPadmin :
@@ -132,8 +145,9 @@ docker exec openldap sh -c 'cat /run/secrets/ldap-admin-password'
 
 ```text
 Base DN dc=lafassonnade,dc=lan visible
-OU visibles
-Utilisateurs/groupes visibles ou créables
+OU users, groups et services visibles
+Utilisateurs alice, bob et admin-tp visibles
+Groupes admins, vpn-users et voip-users visibles
 Bind utilisateur possible
 ```
 
