@@ -115,7 +115,7 @@ admin-tp / admin123
 ## 7. Verifications cote Site A
 
 ```bash
-docker compose -f docker-compose.site-a.macvlan.yml ps
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml ps
 docker exec dns_e3 named-checkconf /etc/bind/named.conf
 docker exec openldap ldapsearch -x -H ldap://127.0.0.1 -b "dc=lafassonnade,dc=lan" "(uid=alice)"
 docker exec asterisk_voip_e3 asterisk -rx "pjsip show endpoints"
@@ -138,11 +138,35 @@ https://192.168.3.20:9443
 ## 8. En cas de reset Vault en lab
 
 ```bash
-docker compose -f docker-compose.site-a.macvlan.yml down
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml down
 sudo rm -rf data/vault
 rm -rf vault-credentials
 mkdir -p data/vault
 sudo chown -R 100:1000 data/vault
 sudo chmod 700 data/vault
 ./scripts/start-site-a.sh
+```
+
+## 9. Erreur overlay/whiteout Docker
+
+Si Docker affiche une erreur du type :
+
+```text
+failed to convert whiteout file: operation not supported
+failed to mount source overlay
+```
+
+le filesystem du lab ne supporte probablement pas correctement `overlay2`.
+Relancer l'installation propre : le script configure Docker en `vfs` par defaut
+et supprime l'ancien stockage Docker.
+
+```bash
+./scripts/start-site-a.sh --install-deps
+docker info | grep -i "Storage Driver"
+```
+
+Attendu :
+
+```text
+Storage Driver: vfs
 ```

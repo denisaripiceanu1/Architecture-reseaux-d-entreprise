@@ -13,6 +13,7 @@ set -Eeuo pipefail
 # - remove stale runtime sockets
 # - remove Docker data by default for a clean lab reinstall
 # - reinstall Docker from the official repository
+# - configure Docker storage driver to vfs by default for lab filesystems
 # - enable containerd, docker.socket and docker.service
 #
 # By default, Docker data is deleted:
@@ -21,6 +22,11 @@ set -Eeuo pipefail
 #
 # To keep existing Docker images, volumes and containers:
 #   KEEP_DOCKER_DATA=1 ./scripts/install-deps-linux.sh
+#
+# Docker uses the vfs storage driver by default because some lab filesystems do
+# not support overlay2 correctly.
+# To override:
+#   DOCKER_STORAGE_DRIVER=overlay2 ./scripts/install-deps-linux.sh
 #
 # Vault local storage is prepared at:
 #   ./data/vault
@@ -228,6 +234,30 @@ configure_docker_repository() {
   ok "Docker repository configured"
 }
 
+configure_docker_daemon() {
+  bold "Docker daemon configuration"
+
+  local storage_driver="${DOCKER_STORAGE_DRIVER:-vfs}"
+  info "Configuring Docker storage driver: ${storage_driver}"
+
+  $SUDO install -m 0755 -d /etc/docker
+
+  if [[ -f /etc/docker/daemon.json ]]; then
+    local backup_path
+    backup_path="/etc/docker/daemon.json.bak.$(date +%Y%m%d%H%M%S)"
+    warn "Backing up existing /etc/docker/daemon.json to ${backup_path}"
+    $SUDO cp /etc/docker/daemon.json "${backup_path}"
+  fi
+
+  $SUDO tee /etc/docker/daemon.json >/dev/null <<EOF
+{
+  "storage-driver": "${storage_driver}"
+}
+EOF
+
+  ok "Docker daemon configured"
+}
+
 install_docker() {
   bold "3/6 Docker Engine and Compose"
 
@@ -243,6 +273,8 @@ install_docker() {
     containerd.io \
     docker-buildx-plugin \
     docker-compose-plugin
+
+  configure_docker_daemon
 
   info "Reloading and repairing systemd units..."
   $SUDO systemctl daemon-reload
@@ -269,6 +301,7 @@ install_docker() {
 
   $SUDO docker version >/dev/null
   $SUDO docker compose version >/dev/null
+  $SUDO docker info --format 'Storage Driver: {{.Driver}}' || true
 
   ok "Docker is installed and active"
 
@@ -449,6 +482,9 @@ Use the pfSense/macvlan Compose files:
 
 Override Vault local storage ownership:
   VAULT_DATA_UID=100 VAULT_DATA_GID=1000 ./scripts/install-deps-linux.sh
+
+Override Docker storage driver:
+  DOCKER_STORAGE_DRIVER=overlay2 ./scripts/install-deps-linux.sh
 EOF
 }
 

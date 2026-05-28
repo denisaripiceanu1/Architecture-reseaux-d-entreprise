@@ -78,7 +78,7 @@ Web DMZ 192.168.40.4
 ## 7. Verifications cote Site B
 
 ```bash
-docker compose -f docker-compose.site-b.macvlan.yml ps
+docker compose --env-file env/site-b.env -f docker-compose.site-b.macvlan.yml ps
 docker logs web_entreprise3b --tail 80
 ```
 
@@ -87,4 +87,28 @@ Le test HTTP complet se fait depuis le poste admin ou via pfSense :
 ```bash
 curl http://192.168.40.4/health
 curl -I http://192.168.40.4
+```
+
+## 8. Erreur overlay/whiteout Docker
+
+Si Docker affiche une erreur du type :
+
+```text
+failed to convert whiteout file: operation not supported
+failed to mount source overlay
+```
+
+le filesystem du lab ne supporte probablement pas correctement `overlay2`.
+Relancer l'installation propre : le script configure Docker en `vfs` par defaut
+et supprime l'ancien stockage Docker.
+
+```bash
+./scripts/start-site-b.sh --install-deps
+docker info | grep -i "Storage Driver"
+```
+
+Attendu :
+
+```text
+Storage Driver: vfs
 ```

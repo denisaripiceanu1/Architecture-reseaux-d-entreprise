@@ -16,17 +16,17 @@ DNS     : 192.168.3.1
 Sur le PC Site A :
 
 ```bash
-./start-site-a.sh
-docker compose -f docker-compose.site-a.macvlan.yml ps
-docker compose -f docker-compose.site-a.macvlan.yml logs -f
+./scripts/start-site-a.sh
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml ps
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml logs -f
 ```
 
 Sur le PC Site B :
 
 ```bash
-./start-site-b.sh
-docker compose -f docker-compose.site-b.macvlan.yml ps
-docker compose -f docker-compose.site-b.macvlan.yml logs -f
+./scripts/start-site-b.sh
+docker compose --env-file env/site-b.env -f docker-compose.site-b.macvlan.yml ps
+docker compose --env-file env/site-b.env -f docker-compose.site-b.macvlan.yml logs -f
 ```
 
 ## DNS
@@ -50,7 +50,7 @@ Valider côté Site A :
 ```bash
 docker exec dns_e3 named-checkconf /etc/bind/named.conf
 docker exec dns_e3 named-checkzone lafassonnade.lan /etc/bind/zones/db.lafassonnade.lan
-docker compose -f docker-compose.site-a.macvlan.yml restart dns
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml restart dns
 ```
 
 ## LDAP et phpLDAPadmin
@@ -116,13 +116,13 @@ Si Vault Agent indique `invalid role or secret ID`, faire un reset cohérent en
 lab :
 
 ```bash
-docker compose -f docker-compose.site-a.macvlan.yml down
+docker compose --env-file env/site-a.env -f docker-compose.site-a.macvlan.yml down
 sudo rm -rf data/vault
 rm -rf vault-credentials
 mkdir -p data/vault
 sudo chown -R 100:1000 data/vault
 sudo chmod 700 data/vault
-./start-site-a.sh
+./scripts/start-site-a.sh
 ```
 
 ## Portainer
@@ -190,7 +190,7 @@ curl http://192.168.40.4/health
 Redémarrer côté Site B :
 
 ```bash
-docker compose -f docker-compose.site-b.macvlan.yml restart web_3b
+docker compose --env-file env/site-b.env -f docker-compose.site-b.macvlan.yml restart web_3b
 ```
 
 ## OpenVPN Access Server

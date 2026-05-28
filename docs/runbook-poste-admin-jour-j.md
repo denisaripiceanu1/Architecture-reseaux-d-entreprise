@@ -164,7 +164,7 @@ Si ça échoue, vérifier les règles pfSense entre SERVICES et DMZ, puis vérif
 sur le PC Site B :
 
 ```bash
-docker compose -f docker-compose.site-b.macvlan.yml ps
+docker compose --env-file env/site-b.env -f docker-compose.site-b.macvlan.yml ps
 docker logs web_entreprise3b --tail 80
 ```
 
