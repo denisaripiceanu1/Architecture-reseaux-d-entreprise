@@ -371,6 +371,20 @@ deploy_compose_stack() {
     -f "${compose_file}"
   )
 
+  local compose_env_file="${COMPOSE_ENV_FILE:-}"
+  if [[ -n "${compose_env_file}" ]]; then
+    if [[ "${compose_env_file}" != /* ]]; then
+      compose_env_file="${PROJECT_DIR}/${compose_env_file}"
+    fi
+
+    if [[ ! -f "${compose_env_file}" ]]; then
+      err "Compose env file not found: ${compose_env_file}"
+      exit 1
+    fi
+
+    compose_args=(--env-file "${compose_env_file}" "${compose_args[@]}")
+  fi
+
   if [[ -n "${COMPOSE_PROFILES:-}" ]]; then
     local profile
     IFS=',' read -r -a profiles <<< "${COMPOSE_PROFILES}"
@@ -379,19 +393,34 @@ deploy_compose_stack() {
     done
   fi
 
+  local compose_env=()
+  local env_name
+  for env_name in SERVICES_IFACE VOICE_IFACE OPENVPN_HOSTNAME DMZ_IFACE; do
+    if [[ -n "${!env_name:-}" ]]; then
+      compose_env+=("${env_name}=${!env_name}")
+    fi
+  done
+
+  local docker_compose_cmd=()
+  if [[ -n "${SUDO}" ]]; then
+    docker_compose_cmd=($SUDO env "${compose_env[@]}" docker compose)
+  else
+    docker_compose_cmd=(env "${compose_env[@]}" docker compose)
+  fi
+
   if [[ "${COMPOSE_DOWN_FIRST:-0}" == "1" ]]; then
     warn "COMPOSE_DOWN_FIRST=1: stopping existing stack before rebuild"
-    $SUDO docker compose "${compose_args[@]}" down --remove-orphans || true
+    "${docker_compose_cmd[@]}" "${compose_args[@]}" down --remove-orphans || true
   fi
 
   info "Validating Compose file..."
-  $SUDO docker compose "${compose_args[@]}" config --quiet
+  "${docker_compose_cmd[@]}" "${compose_args[@]}" config --quiet
 
   info "Building Compose images..."
-  $SUDO docker compose "${compose_args[@]}" build
+  "${docker_compose_cmd[@]}" "${compose_args[@]}" build
 
   info "Starting Compose stack..."
-  $SUDO docker compose "${compose_args[@]}" up -d --remove-orphans
+  "${docker_compose_cmd[@]}" "${compose_args[@]}" up -d --remove-orphans
 
   ok "Compose stack is running"
 }

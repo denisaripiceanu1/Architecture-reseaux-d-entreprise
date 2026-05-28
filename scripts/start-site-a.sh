@@ -82,16 +82,16 @@ run_ldap_bootstrap() {
 }
 
 if [[ "${INSTALL_DEPS}" == "1" ]]; then
-  COMPOSE_FILE="${COMPOSE_FILE_PATH}" "${PROJECT_DIR}/scripts/install-deps-linux.sh"
+  COMPOSE_FILE="${COMPOSE_FILE_PATH}" COMPOSE_ENV_FILE="${ENV_FILE}" "${PROJECT_DIR}/scripts/install-deps-linux.sh"
   run_ldap_bootstrap
   exit 0
 fi
 
 if [[ "${DOWN_FIRST}" == "1" ]]; then
-  docker compose --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" down --remove-orphans
+  docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" down --remove-orphans
 fi
 
-docker compose --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" config --quiet
-docker compose --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" up -d --build --remove-orphans
+docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" config --quiet
+docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" up -d --build --remove-orphans
 run_ldap_bootstrap
-docker compose --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" ps
+docker compose --env-file "${ENV_FILE}" --project-directory "${PROJECT_DIR}" -f "${COMPOSE_FILE_PATH}" ps
